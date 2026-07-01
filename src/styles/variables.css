@@ -1,0 +1,14 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #F5F6F9;
+  --surface: #FFFFFF;
+  --ink: #171A23;
+  --muted: #727889;
+  --line: #E6E8EF;
+  --line2: #EFF0F5;
+  --accent: #4A45C9;
+  --accent-h: #3D38B4;
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
