@@ -62,6 +62,12 @@ VITE_SUPABASE_ANON_KEY=<Supabase anon key>
 
 Supabase SQL Editor에서 `supabase-setup.sql`을 실행하세요.
 
+## 배포 전략
+
+- **브랜치**: `main` 단일 브랜치
+- **배포**: `main`에 push하면 Vercel이 자동 빌드 & 프로덕션 배포
+- **프리뷰**: 별도 스테이징/프리뷰 환경 없음 (소규모 프로젝트)
+
 ## 프로젝트 구조
 
 ```
