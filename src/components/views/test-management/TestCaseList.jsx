@@ -218,16 +218,40 @@ export default function TestCaseList() {
         alert("테스트 케이스를 찾을 수 없습니다. 엑셀 형식을 확인해주세요.");
         return;
       }
+      // 중복 체크: 제목 + 폴더가 같으면 중복
+      const existingKeys = new Set(
+        state.testCases.map((tc) => `${tc.folder || ""}::${tc.title}`)
+      );
+      const unique = [];
+      const dupes = [];
+      for (const tc of cases) {
+        const key = `${tc.folder || ""}::${tc.title}`;
+        if (existingKeys.has(key)) {
+          dupes.push(tc.title);
+        } else {
+          unique.push(tc);
+          existingKeys.add(key);
+        }
+      }
+
+      if (unique.length === 0) {
+        alert(`모든 테스트 케이스(${dupes.length}개)가 이미 존재합니다.`);
+        return;
+      }
+
       // 새 기능영역 자동 추가
       const existingAreas = new Set(state.featureAreas);
-      const newAreas = [...new Set(cases.map((c) => c.featureArea).filter((a) => a && !existingAreas.has(a)))];
+      const newAreas = [...new Set(unique.map((c) => c.featureArea).filter((a) => a && !existingAreas.has(a)))];
       if (newAreas.length > 0) {
         dispatch({ type: "SET_FEATURE_AREAS", areas: [...state.featureAreas, ...newAreas] });
       }
-      cases.forEach((tc) => {
+      unique.forEach((tc) => {
         dispatch({ type: "UPSERT_TEST_CASE", testCase: tc });
       });
-      alert(`${cases.length}개의 테스트 케이스를 가져왔습니다.`);
+      const msg = dupes.length > 0
+        ? `${unique.length}개 추가, ${dupes.length}개 중복 건너뜀`
+        : `${unique.length}개의 테스트 케이스를 가져왔습니다.`;
+      alert(msg);
     };
     reader.readAsArrayBuffer(file);
     e.target.value = "";
