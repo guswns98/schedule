@@ -11,6 +11,19 @@ function parseExcel(buffer) {
   // 두 번째 시트 (TC 데이터), 없으면 첫 번째 시트
   const sheetName = wb.SheetNames[1] || wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
+  // 셀 병합 처리: 병합된 영역의 빈 셀에 원본 값 채우기
+  if (ws["!merges"]) {
+    for (const merge of ws["!merges"]) {
+      const origin = ws[utils.encode_cell({ r: merge.s.r, c: merge.s.c })];
+      if (!origin) continue;
+      for (let r = merge.s.r; r <= merge.e.r; r++) {
+        for (let c = merge.s.c; c <= merge.e.c; c++) {
+          const addr = utils.encode_cell({ r, c });
+          if (!ws[addr]) ws[addr] = { ...origin };
+        }
+      }
+    }
+  }
   const rows = utils.sheet_to_json(ws, { header: 1, defval: "" });
 
   // 헤더 행 찾기: "1 Depth" 포함된 행
@@ -85,7 +98,7 @@ function parseExcel(buffer) {
       folder,
       featureArea,
       preconditions: "",
-      steps: [{ order: 1, action: title, expected }],
+      steps: [{ order: 1, action: activeParts.join(" > "), expected }],
       tags: priority ? [priority] : [],
       linkedItemIds: [],
     });
