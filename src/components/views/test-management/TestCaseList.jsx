@@ -93,6 +93,98 @@ function parseExcel(buffer) {
   return testCases;
 }
 
+function FolderTreeNode({ node, depth, path, openFolders, toggleFolder, checked, toggleCheck, toggleCheckFolder, getAllCasesInNode, selected, setSelected, getLastRun, getRunCount, resultIcon }) {
+  const entries = Object.entries(node.children);
+  const paddingLeft = 12 + depth * 16;
+
+  return (
+    <>
+      {entries.map(([name, child]) => {
+        const fullPath = path ? `${path} / ${name}` : name;
+        const isOpen = !!openFolders[fullPath];
+        const allCases = getAllCasesInNode(child);
+        const totalCount = allCases.length;
+
+        return (
+          <div key={fullPath}>
+            <div className="tm-folder" style={{ paddingLeft }} onClick={() => toggleFolder(fullPath)}>
+              <input type="checkbox"
+                checked={totalCount > 0 && allCases.every((tc) => checked.has(tc.id))}
+                onChange={(e) => toggleCheckFolder(allCases, e)} />
+              {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              {isOpen ? <FolderOpen size={14} /> : <Folder size={14} />}
+              <span className="tm-folder-name">{name}</span>
+              <span className="tm-folder-count">{totalCount}</span>
+            </div>
+            {isOpen && (
+              <>
+                <FolderTreeNode
+                  node={child}
+                  depth={depth + 1}
+                  path={fullPath}
+                  openFolders={openFolders}
+                  toggleFolder={toggleFolder}
+                  checked={checked}
+                  toggleCheck={toggleCheck}
+                  toggleCheckFolder={toggleCheckFolder}
+                  getAllCasesInNode={getAllCasesInNode}
+                  selected={selected}
+                  setSelected={setSelected}
+                  getLastRun={getLastRun}
+                  getRunCount={getRunCount}
+                  resultIcon={resultIcon}
+                />
+                {child.cases.map((tc) => {
+                  const last = getLastRun(tc.id);
+                  const count = getRunCount(tc.id);
+                  return (
+                    <div key={tc.id}
+                      className={`tm-item ${selected === tc.id ? "active" : ""}`}
+                      style={{ paddingLeft: paddingLeft + 20 }}
+                      onClick={() => setSelected(tc.id)}>
+                      <div className="tm-item-top">
+                        <input type="checkbox" checked={checked.has(tc.id)}
+                          onChange={(e) => toggleCheck(tc.id, e)} />
+                        {last && resultIcon(last.result)}
+                      </div>
+                      <div className="tm-item-title">{tc.title}</div>
+                      <div className="tm-item-meta">
+                        <span>{tc.steps.length}개 스텝</span>
+                        <span>{count}회 실행</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        );
+      })}
+      {/* 폴더 없는 루트 레벨 TC */}
+      {depth === 0 && node.cases.map((tc) => {
+        const last = getLastRun(tc.id);
+        const count = getRunCount(tc.id);
+        return (
+          <div key={tc.id}
+            className={`tm-item ${selected === tc.id ? "active" : ""}`}
+            onClick={() => setSelected(tc.id)}>
+            <div className="tm-item-top">
+              <input type="checkbox" checked={checked.has(tc.id)}
+                onChange={(e) => toggleCheck(tc.id, e)} />
+              {last && resultIcon(last.result)}
+            </div>
+            <div className="tm-item-title">{tc.title}</div>
+            <div className="tm-item-meta">
+              <span>{tc.steps.length}개 스텝</span>
+              <span>{count}회 실행</span>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export default function TestCaseList() {
   const { state, dispatch } = useStore();
   const [editing, setEditing] = useState(null);
@@ -197,21 +289,34 @@ export default function TestCaseList() {
     });
   }, [state.testCases, q, fArea]);
 
-  // 폴더별 그룹핑
-  const grouped = useMemo(() => {
-    const map = new Map(); // folder -> testCases[]
-    const noFolder = [];
+  // 폴더 트리 구조 생성
+  const folderTree = useMemo(() => {
+    const root = { children: {}, cases: [] };
     for (const tc of filtered) {
       const folder = tc.folder || "";
       if (!folder) {
-        noFolder.push(tc);
+        root.cases.push(tc);
       } else {
-        if (!map.has(folder)) map.set(folder, []);
-        map.get(folder).push(tc);
+        const parts = folder.split(" / ");
+        let node = root;
+        for (const part of parts) {
+          if (!node.children[part]) node.children[part] = { children: {}, cases: [] };
+          node = node.children[part];
+        }
+        node.cases.push(tc);
       }
     }
-    return { folders: [...map.entries()], noFolder };
+    return root;
   }, [filtered]);
+
+  // 폴더 내 모든 TC를 재귀적으로 수집
+  const getAllCasesInNode = (node) => {
+    let all = [...node.cases];
+    for (const child of Object.values(node.children)) {
+      all = all.concat(getAllCasesInNode(child));
+    }
+    return all;
+  };
 
   const getLastRun = (tcId) => {
     const runs = state.testRuns.filter((r) => r.testCaseId === tcId);
@@ -289,64 +394,22 @@ export default function TestCaseList() {
           </div>
         ) : (
           <div className="tm-items">
-            {grouped.folders.map(([folder, cases]) => {
-              const isOpen = openFolders[folder] !== false; // 기본 열림
-              return (
-                <div key={folder}>
-                  <div className="tm-folder" onClick={() => toggleFolder(folder)}>
-                    <input type="checkbox"
-                      checked={cases.every((tc) => checked.has(tc.id))}
-                      onChange={(e) => toggleCheckFolder(cases, e)} />
-                    {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    {isOpen ? <FolderOpen size={14} /> : <Folder size={14} />}
-                    <span className="tm-folder-name">{folder}</span>
-                    <span className="tm-folder-count">{cases.length}</span>
-                  </div>
-                  {isOpen && cases.map((tc) => {
-                    const last = getLastRun(tc.id);
-                    const count = getRunCount(tc.id);
-                    return (
-                      <div key={tc.id}
-                        className={`tm-item tm-item-nested ${selected === tc.id ? "active" : ""}`}
-                        onClick={() => setSelected(tc.id)}>
-                        <div className="tm-item-top">
-                          <input type="checkbox" checked={checked.has(tc.id)}
-                            onChange={(e) => toggleCheck(tc.id, e)} />
-                          <span className="tm-item-area">{tc.featureArea}</span>
-                          {last && resultIcon(last.result)}
-                        </div>
-                        <div className="tm-item-title">{tc.title}</div>
-                        <div className="tm-item-meta">
-                          <span>{tc.steps.length}개 스텝</span>
-                          <span>{count}회 실행</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-            {grouped.noFolder.map((tc) => {
-              const last = getLastRun(tc.id);
-              const count = getRunCount(tc.id);
-              return (
-                <div key={tc.id}
-                  className={`tm-item ${selected === tc.id ? "active" : ""}`}
-                  onClick={() => setSelected(tc.id)}>
-                  <div className="tm-item-top">
-                    <input type="checkbox" checked={checked.has(tc.id)}
-                      onChange={(e) => toggleCheck(tc.id, e)} />
-                    <span className="tm-item-area">{tc.featureArea}</span>
-                    {last && resultIcon(last.result)}
-                  </div>
-                  <div className="tm-item-title">{tc.title}</div>
-                  <div className="tm-item-meta">
-                    <span>{tc.steps.length}개 스텝</span>
-                    <span>{count}회 실행</span>
-                  </div>
-                </div>
-              );
-            })}
+            <FolderTreeNode
+              node={folderTree}
+              depth={0}
+              path=""
+              openFolders={openFolders}
+              toggleFolder={toggleFolder}
+              checked={checked}
+              toggleCheck={toggleCheck}
+              toggleCheckFolder={toggleCheckFolder}
+              getAllCasesInNode={getAllCasesInNode}
+              selected={selected}
+              setSelected={setSelected}
+              getLastRun={getLastRun}
+              getRunCount={getRunCount}
+              resultIcon={resultIcon}
+            />
           </div>
         )}
       </div>
