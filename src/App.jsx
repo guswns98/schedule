@@ -26,7 +26,7 @@ import ItemForm from "./components/forms/ItemForm";
 import "./App.css";
 
 export default function App() {
-  const { state, dispatch, refresh } = useStore();
+  const { state, dispatch, refresh, loading } = useStore();
   const [view, setView] = useState("kanban");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -54,14 +54,16 @@ export default function App() {
     dispatch({ type: "SET_STATUS", id, status });
   };
 
+  const items = state?.items || [];
+
   const assignees = useMemo(
-    () => Array.from(new Set(state.items.map((i) => i.assignee).filter(Boolean))).sort(),
-    [state.items]
+    () => Array.from(new Set(items.map((i) => i.assignee).filter(Boolean))).sort(),
+    [items]
   );
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return state.items.filter((i) => {
+    return items.filter((i) => {
       if (fType !== "all" && i.type !== fType) return false;
       if (fStatus !== "all" && i.status !== fStatus) return false;
       if (fAssignee !== "all" && i.assignee !== fAssignee) return false;
@@ -71,7 +73,7 @@ export default function App() {
       }
       return true;
     });
-  }, [state.items, q, fType, fStatus, fAssignee]);
+  }, [items, q, fType, fStatus, fAssignee]);
 
   const anyFilter = fType !== "all" || fStatus !== "all" || fAssignee !== "all" || q.trim();
   const clearFilters = () => { setFType("all"); setFStatus("all"); setFAssignee("all"); setQ(""); };
@@ -80,7 +82,7 @@ export default function App() {
 
   const renderContent = () => {
     if (isBoardView) {
-      if (state.items.length === 0) return <Empty onAdd={() => setEditing("new")} />;
+      if (items.length === 0) return <Empty onAdd={() => setEditing("new")} />;
       if (filtered.length === 0) {
         return (
           <div className="center muted">
@@ -132,6 +134,14 @@ export default function App() {
 
     return null;
   };
+
+  if (loading || !state) {
+    return (
+      <div className="app-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span className="muted">불러오는 중...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">

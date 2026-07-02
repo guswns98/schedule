@@ -1,29 +1,11 @@
-import { createContext, useContext, useReducer, useEffect, useCallback } from "react";
-import { TYPES, STORAGE_KEY } from "../constants/types";
+import { createContext, useContext, useReducer, useEffect, useCallback, useRef, useState } from "react";
+import { TYPES } from "../constants/types";
 import { pad } from "../utils/date";
 import { genId } from "../utils/id";
 import { seedData } from "./seed";
-import { migrate } from "./migrations";
+import * as db from "./supabaseStorage";
 
 const StoreContext = createContext(null);
-
-/* ---- localStorage helpers ---- */
-function loadStore() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? migrate(JSON.parse(raw)) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveStore(data) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.error("save failed", e);
-  }
-}
 
 /* ---- Reducer ---- */
 function reducer(state, action) {
@@ -133,22 +115,152 @@ function reducer(state, action) {
   }
 }
 
+/* ---- Supabase sync: dispatch 후 DB에 비동기 반영 ---- */
+function syncToSupabase(prevState, newState, action) {
+  switch (action.type) {
+    case "UPSERT_ITEM": {
+      const item = action.item;
+      if (item.id) {
+        db.upsertItem(item);
+      } else {
+        // 새로 생성된 아이템은 newState에서 찾기
+        const created = newState.items[newState.items.length - 1];
+        db.upsertItem(created);
+        db.updateSeq(newState.seq);
+      }
+      break;
+    }
+    case "REMOVE_ITEM":
+      db.removeItem(action.id);
+      break;
+    case "SET_STATUS":
+      db.updateItemStatus(action.id, action.status);
+      break;
+    case "UPSERT_TEST_CASE": {
+      const tc = action.testCase;
+      const saved = tc.id
+        ? newState.testCases.find((t) => t.id === tc.id)
+        : newState.testCases[newState.testCases.length - 1];
+      if (saved) db.upsertTestCase(saved);
+      break;
+    }
+    case "REMOVE_TEST_CASE":
+      db.removeTestCase(action.id);
+      break;
+    case "ADD_TEST_RUN": {
+      const run = newState.testRuns[newState.testRuns.length - 1];
+      if (run) db.addTestRun(run);
+      break;
+    }
+    case "REMOVE_TEST_RUN":
+      db.removeTestRun(action.id);
+      break;
+    case "UPSERT_REGRESSION_SET": {
+      const rs = action.set;
+      const saved = rs.id
+        ? newState.regressionSets.find((s) => s.id === rs.id)
+        : newState.regressionSets[newState.regressionSets.length - 1];
+      if (saved) db.upsertRegressionSet(saved);
+      break;
+    }
+    case "REMOVE_REGRESSION_SET":
+      db.removeRegressionSet(action.id);
+      break;
+    case "UPDATE_BUG_REPRO":
+      db.updateBugRepro(action.itemId, action.data);
+      break;
+    case "SET_ENVIRONMENTS":
+      db.setEnvironments(action.environments);
+      break;
+    case "UPSERT_RELEASE": {
+      const rel = action.release;
+      const saved = rel.id
+        ? newState.releases.find((r) => r.id === rel.id)
+        : newState.releases[newState.releases.length - 1];
+      if (saved) db.upsertRelease(saved);
+      break;
+    }
+    case "REMOVE_RELEASE":
+      db.removeRelease(action.id);
+      break;
+    case "SET_FEATURE_AREAS":
+      db.setFeatureAreas(action.areas);
+      break;
+    case "SET_MEMBERS":
+      db.setMembers(action.members);
+      break;
+    case "UPSERT_TEMPLATE": {
+      const tpl = action.template;
+      const saved = tpl.id
+        ? newState.checklistTemplates.find((t) => t.id === tpl.id)
+        : newState.checklistTemplates[newState.checklistTemplates.length - 1];
+      if (saved) db.upsertTemplate(saved);
+      break;
+    }
+    case "REMOVE_TEMPLATE":
+      db.removeTemplate(action.id);
+      break;
+    case "ADD_DAILY_REPORT": {
+      const report = newState.dailyReports[newState.dailyReports.length - 1];
+      if (report) db.addDailyReport(report);
+      break;
+    }
+  }
+}
+
 /* ---- Provider ---- */
 export function StoreProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, null, () => {
-    const loaded = loadStore();
-    return loaded || seedData();
-  });
+  const [state, rawDispatch] = useReducer(reducer, null);
+  const [loading, setLoading] = useState(true);
+  const stateRef = useRef(null);
 
-  // Auto-save on every state change
+  // state ref를 항상 최신으로 유지
   useEffect(() => {
-    if (state) saveStore(state);
+    stateRef.current = state;
   }, [state]);
 
-  // Sync on focus
+  // dispatch를 감싸서 Supabase 동기화 추가
+  const dispatch = useCallback((action) => {
+    const prevState = stateRef.current;
+    rawDispatch(action);
+    // reducer 결과는 다음 렌더에서 반영되므로, 직접 계산
+    if (prevState && action.type !== "INIT") {
+      const newState = reducer(prevState, action);
+      syncToSupabase(prevState, newState, action);
+    }
+  }, []);
+
+  // 초기 로딩: Supabase에서 데이터 가져오기
+  useEffect(() => {
+    db.fetchAll().then((data) => {
+      const hasData = data.items.length > 0;
+      if (hasData) {
+        rawDispatch({ type: "INIT", data });
+      } else {
+        // DB가 비어있으면 시드 데이터 삽입
+        const seed = seedData();
+        rawDispatch({ type: "INIT", data: seed });
+        // 시드 데이터를 Supabase에 저장
+        Promise.all([
+          ...seed.items.map((item) => db.upsertItem(item)),
+          db.updateSeq(seed.seq),
+        ]);
+      }
+      setLoading(false);
+    }).catch(() => {
+      // Supabase 연결 실패 시 시드 데이터로 시작
+      rawDispatch({ type: "INIT", data: seedData() });
+      setLoading(false);
+    });
+  }, []);
+
+  // focus 시 Supabase에서 재동기화
   const refresh = useCallback(() => {
-    const d = loadStore();
-    if (d) dispatch({ type: "INIT", data: d });
+    db.fetchAll().then((data) => {
+      if (data.items.length > 0 || data.testCases.length > 0) {
+        rawDispatch({ type: "INIT", data });
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -156,13 +268,8 @@ export function StoreProvider({ children }) {
     return () => window.removeEventListener("focus", refresh);
   }, [refresh]);
 
-  // Save seed if first load
-  useEffect(() => {
-    if (!loadStore()) saveStore(state);
-  }, []);
-
   return (
-    <StoreContext.Provider value={{ state, dispatch, refresh }}>
+    <StoreContext.Provider value={{ state, dispatch, refresh, loading }}>
       {children}
     </StoreContext.Provider>
   );
