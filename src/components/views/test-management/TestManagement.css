@@ -104,6 +104,41 @@
   color: var(--muted);
 }
 
+/* Bulk actions */
+.tm-bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line2);
+  font-size: 12px;
+}
+.tm-check-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.tm-check-wrap input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+.tm-bulk-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+.tm-item-top input[type="checkbox"],
+.tm-folder input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
 /* Folders */
 .tm-folder {
   display: flex;

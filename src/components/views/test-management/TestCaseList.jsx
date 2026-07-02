@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from "react";
-import { Plus, Search, FlaskConical, ChevronRight, ChevronDown, CheckCircle2, XCircle, MinusCircle, Upload, FolderOpen, Folder } from "lucide-react";
+import { Plus, Search, FlaskConical, ChevronRight, ChevronDown, CheckCircle2, XCircle, MinusCircle, Upload, FolderOpen, Folder, Trash2, FolderEdit } from "lucide-react";
 import { read, utils } from "xlsx";
 import { useStore } from "../../../store/StoreContext";
 import TestCaseForm from "../../forms/TestCaseForm";
@@ -116,9 +116,64 @@ export default function TestCaseList() {
   };
 
   const [openFolders, setOpenFolders] = useState({});
+  const [checked, setChecked] = useState(new Set());
 
   const toggleFolder = (path) => {
     setOpenFolders((p) => ({ ...p, [path]: !p[path] }));
+  };
+
+  const toggleCheck = (id, e) => {
+    e.stopPropagation();
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleCheckAll = () => {
+    if (checked.size === filtered.length) {
+      setChecked(new Set());
+    } else {
+      setChecked(new Set(filtered.map((tc) => tc.id)));
+    }
+  };
+
+  const toggleCheckFolder = (cases, e) => {
+    e.stopPropagation();
+    const ids = cases.map((tc) => tc.id);
+    setChecked((prev) => {
+      const next = new Set(prev);
+      const allChecked = ids.every((id) => next.has(id));
+      if (allChecked) {
+        ids.forEach((id) => next.delete(id));
+      } else {
+        ids.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const bulkDelete = () => {
+    if (checked.size === 0) return;
+    if (!confirm(`${checked.size}개의 테스트 케이스를 삭제하시겠습니까?`)) return;
+    for (const id of checked) {
+      dispatch({ type: "REMOVE_TEST_CASE", id });
+    }
+    setChecked(new Set());
+    setSelected(null);
+  };
+
+  const bulkMove = () => {
+    if (checked.size === 0) return;
+    const folder = prompt("이동할 폴더 경로를 입력하세요 (비우면 루트)");
+    if (folder === null) return;
+    for (const id of checked) {
+      const tc = state.testCases.find((t) => t.id === id);
+      if (tc) dispatch({ type: "UPSERT_TEST_CASE", testCase: { ...tc, folder: folder.trim() } });
+    }
+    setChecked(new Set());
   };
 
   const filtered = useMemo(() => {
@@ -193,6 +248,28 @@ export default function TestCaseList() {
           </select>
         </div>
 
+        {filtered.length > 0 && (
+          <div className="tm-bulk-bar">
+            <label className="tm-check-wrap" onClick={(e) => e.stopPropagation()}>
+              <input type="checkbox" checked={checked.size === filtered.length && filtered.length > 0}
+                onChange={toggleCheckAll} />
+              <span className="tm-bulk-label">
+                {checked.size > 0 ? `${checked.size}개 선택` : "전체 선택"}
+              </span>
+            </label>
+            {checked.size > 0 && (
+              <div style={{ display: "flex", gap: 4 }}>
+                <button className="btn-ghost" style={{ fontSize: 12, padding: "3px 8px" }} onClick={bulkMove}>
+                  <FolderEdit size={13} /> 이동
+                </button>
+                <button className="btn-danger" style={{ fontSize: 12, padding: "3px 8px" }} onClick={bulkDelete}>
+                  <Trash2 size={13} /> 삭제
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           <div className="tm-empty">
             <p className="muted">테스트 케이스가 없습니다.</p>
@@ -205,6 +282,9 @@ export default function TestCaseList() {
               return (
                 <div key={folder}>
                   <div className="tm-folder" onClick={() => toggleFolder(folder)}>
+                    <input type="checkbox"
+                      checked={cases.every((tc) => checked.has(tc.id))}
+                      onChange={(e) => toggleCheckFolder(cases, e)} />
                     {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     {isOpen ? <FolderOpen size={14} /> : <Folder size={14} />}
                     <span className="tm-folder-name">{folder}</span>
@@ -218,6 +298,8 @@ export default function TestCaseList() {
                         className={`tm-item tm-item-nested ${selected === tc.id ? "active" : ""}`}
                         onClick={() => setSelected(tc.id)}>
                         <div className="tm-item-top">
+                          <input type="checkbox" checked={checked.has(tc.id)}
+                            onChange={(e) => toggleCheck(tc.id, e)} />
                           <span className="tm-item-area">{tc.featureArea}</span>
                           {last && resultIcon(last.result)}
                         </div>
@@ -240,6 +322,8 @@ export default function TestCaseList() {
                   className={`tm-item ${selected === tc.id ? "active" : ""}`}
                   onClick={() => setSelected(tc.id)}>
                   <div className="tm-item-top">
+                    <input type="checkbox" checked={checked.has(tc.id)}
+                      onChange={(e) => toggleCheck(tc.id, e)} />
                     <span className="tm-item-area">{tc.featureArea}</span>
                     {last && resultIcon(last.result)}
                   </div>
