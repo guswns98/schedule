@@ -170,11 +170,11 @@ button { font-family: inherit; cursor: pointer; }
 .tbl th:hover { color: var(--ink); }
 .tbl th.sorted { color: var(--accent); }
 .tbl th .arr { margin-left: 3px; }
-.tbl td { padding: 10px 12px; border-bottom: 1px solid var(--line2); vertical-align: middle; }
+.tbl td { padding: 10px 12px; border-bottom: 1px solid var(--line2); vertical-align: middle; white-space: nowrap; }
 .tbl tbody tr:last-child td { border-bottom: none; }
 .tbl tbody tr { cursor: pointer; }
 .tbl tbody tr:hover { background: var(--bg); }
-.tbl .grow { width: 99%; font-weight: 500; }
+.tbl .grow { width: 99%; font-weight: 500; white-space: normal; }
 .tbl .late { color: #DC2626; font-weight: 600; }
 .tbl-tags { margin-left: 8px; display: inline-flex; gap: 4px; }
 
