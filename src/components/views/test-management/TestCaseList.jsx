@@ -36,6 +36,16 @@ function parseExcel(buffer) {
 
   if (depthCols.length === 0 || expIdx === -1) return [];
 
+  // 루트 폴더명 추출: 헤더 행 바로 위에서 첫 번째 셀에 값이 있는 행
+  let rootName = "";
+  for (let i = headerIdx - 1; i >= 0; i--) {
+    const val = String(rows[i]?.[0] || "").trim();
+    if (val && !/Depth|Priority|Expected/i.test(val)) {
+      rootName = val;
+      break;
+    }
+  }
+
   const testCases = [];
   // 각 depth별 현재 값을 추적
   const currentDepths = depthCols.map(() => "");
@@ -62,7 +72,9 @@ function parseExcel(buffer) {
     if (activeParts.length === 0) continue;
 
     const title = activeParts[activeParts.length - 1];
-    const folder = activeParts.length > 1 ? activeParts.slice(0, -1).join(" / ") : "";
+    const folderParts = activeParts.length > 1 ? activeParts.slice(0, -1) : [];
+    if (rootName) folderParts.unshift(rootName);
+    const folder = folderParts.join(" / ");
     const featureArea = currentDepths[0] || "";
 
     const priority = priIdx >= 0 ? String(row[priIdx] || "").trim() : "";
