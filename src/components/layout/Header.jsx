@@ -4,7 +4,7 @@ export default function Header({ saving, onRefresh, onAdd }) {
   return (
     <header className="hdr">
       <div className="hdr-brand">
-        <div className="hdr-sub">통합 일정 보드</div>
+        <div className="hdr-sub">Tracker</div>
       </div>
       <div className="hdr-actions">
         <button className="btn-ghost" onClick={onRefresh} title="새로고침">

@@ -15,7 +15,7 @@ export default function Sidebar({ activeView, onViewChange, collapsed, onToggle 
       <div className="sb-header">
         {!collapsed && (
           <div className="sb-brand">
-            <div className="sb-logo">QA<span>/</span>PM</div>
+            <div className="sb-logo">Tracker</div>
           </div>
         )}
         <button className="btn-ghost sb-toggle" onClick={onToggle}>
