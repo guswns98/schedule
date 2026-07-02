@@ -6,6 +6,7 @@ export default function TestCaseForm({ testCase, onClose }) {
   const { state, dispatch } = useStore();
   const [f, setF] = useState(() => testCase || {
     title: "",
+    folder: "",
     featureArea: state.featureAreas[0] || "",
     preconditions: "",
     steps: [{ order: 1, action: "", expected: "" }],
@@ -70,6 +71,12 @@ export default function TestCaseForm({ testCase, onClose }) {
             <span>제목</span>
             <input autoFocus value={f.title} onChange={(e) => set("title", e.target.value)}
               placeholder="테스트 케이스 제목" />
+          </label>
+
+          <label className="fld">
+            <span>폴더</span>
+            <input value={f.folder || ""} onChange={(e) => set("folder", e.target.value)}
+              placeholder="예: VIP 소개 / 히어로 영역 (비워두면 루트)" />
           </label>
 
           <div className="fld-row">

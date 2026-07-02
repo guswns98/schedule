@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from "react";
-import { Plus, Search, FlaskConical, ChevronRight, CheckCircle2, XCircle, MinusCircle, Upload } from "lucide-react";
+import { Plus, Search, FlaskConical, ChevronRight, ChevronDown, CheckCircle2, XCircle, MinusCircle, Upload, FolderOpen, Folder } from "lucide-react";
 import { read, utils } from "xlsx";
 import { useStore } from "../../../store/StoreContext";
 import TestCaseForm from "../../forms/TestCaseForm";
@@ -18,7 +18,6 @@ function parseExcel(buffer) {
     r.some((c) => String(c).trim() === "1 Depth")
   );
   if (headerIdx === -1) {
-    // 대안: Priority, Expected Result 포함 행
     headerIdx = rows.findIndex((r) =>
       r.some((c) => String(c).includes("Priority")) &&
       r.some((c) => String(c).includes("Expected"))
@@ -28,7 +27,6 @@ function parseExcel(buffer) {
 
   const header = rows[headerIdx].map((c) => String(c).trim());
 
-  // 컬럼 인덱스 매핑
   const depthCols = [];
   for (let i = 0; i < header.length; i++) {
     if (/^\d+ Depth$/.test(header[i])) depthCols.push(i);
@@ -39,30 +37,40 @@ function parseExcel(buffer) {
   if (depthCols.length === 0 || expIdx === -1) return [];
 
   const testCases = [];
-  let currentGroup = "";
+  // 각 depth별 현재 값을 추적
+  const currentDepths = depthCols.map(() => "");
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.every((c) => !String(c).trim())) continue;
 
-    // 첫 번째 depth 컬럼에 값이 있으면 그룹(기능영역) 업데이트
-    const d1 = String(row[depthCols[0]] || "").trim();
-    if (d1) currentGroup = d1;
+    // depth 값 업데이트 (상위 depth가 바뀌면 하위는 초기화)
+    for (let d = 0; d < depthCols.length; d++) {
+      const val = String(row[depthCols[d]] || "").trim();
+      if (val) {
+        currentDepths[d] = val;
+        // 하위 depth 초기화
+        for (let k = d + 1; k < depthCols.length; k++) currentDepths[k] = "";
+      }
+    }
 
-    // Expected Result가 있으면 테스트 케이스로 취급
     const expected = String(row[expIdx] || "").trim();
     if (!expected) continue;
 
-    // depth 값들을 조합해서 제목 생성
-    const depths = depthCols.map((ci) => String(row[ci] || "").trim()).filter(Boolean);
-    const title = depths.length > 1 ? depths.slice(1).join(" > ") : depths[0] || "";
-    if (!title) continue;
+    // 마지막 비어있지 않은 depth가 제목, 나머지가 폴더 경로
+    const activeParts = currentDepths.filter(Boolean);
+    if (activeParts.length === 0) continue;
+
+    const title = activeParts[activeParts.length - 1];
+    const folder = activeParts.length > 1 ? activeParts.slice(0, -1).join(" / ") : "";
+    const featureArea = currentDepths[0] || "";
 
     const priority = priIdx >= 0 ? String(row[priIdx] || "").trim() : "";
 
     testCases.push({
       title,
-      featureArea: currentGroup,
+      folder,
+      featureArea,
       preconditions: "",
       steps: [{ order: 1, action: title, expected }],
       tags: priority ? [priority] : [],
@@ -107,14 +115,36 @@ export default function TestCaseList() {
     e.target.value = "";
   };
 
+  const [openFolders, setOpenFolders] = useState({});
+
+  const toggleFolder = (path) => {
+    setOpenFolders((p) => ({ ...p, [path]: !p[path] }));
+  };
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return state.testCases.filter((tc) => {
       if (fArea !== "all" && tc.featureArea !== fArea) return false;
-      if (needle && !`${tc.title} ${(tc.tags || []).join(" ")}`.toLowerCase().includes(needle)) return false;
+      if (needle && !`${tc.title} ${tc.folder || ""} ${(tc.tags || []).join(" ")}`.toLowerCase().includes(needle)) return false;
       return true;
     });
   }, [state.testCases, q, fArea]);
+
+  // 폴더별 그룹핑
+  const grouped = useMemo(() => {
+    const map = new Map(); // folder -> testCases[]
+    const noFolder = [];
+    for (const tc of filtered) {
+      const folder = tc.folder || "";
+      if (!folder) {
+        noFolder.push(tc);
+      } else {
+        if (!map.has(folder)) map.set(folder, []);
+        map.get(folder).push(tc);
+      }
+    }
+    return { folders: [...map.entries()], noFolder };
+  }, [filtered]);
 
   const getLastRun = (tcId) => {
     const runs = state.testRuns.filter((r) => r.testCaseId === tcId);
@@ -170,7 +200,39 @@ export default function TestCaseList() {
           </div>
         ) : (
           <div className="tm-items">
-            {filtered.map((tc) => {
+            {grouped.folders.map(([folder, cases]) => {
+              const isOpen = openFolders[folder] !== false; // 기본 열림
+              return (
+                <div key={folder}>
+                  <div className="tm-folder" onClick={() => toggleFolder(folder)}>
+                    {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    {isOpen ? <FolderOpen size={14} /> : <Folder size={14} />}
+                    <span className="tm-folder-name">{folder}</span>
+                    <span className="tm-folder-count">{cases.length}</span>
+                  </div>
+                  {isOpen && cases.map((tc) => {
+                    const last = getLastRun(tc.id);
+                    const count = getRunCount(tc.id);
+                    return (
+                      <div key={tc.id}
+                        className={`tm-item tm-item-nested ${selected === tc.id ? "active" : ""}`}
+                        onClick={() => setSelected(tc.id)}>
+                        <div className="tm-item-top">
+                          <span className="tm-item-area">{tc.featureArea}</span>
+                          {last && resultIcon(last.result)}
+                        </div>
+                        <div className="tm-item-title">{tc.title}</div>
+                        <div className="tm-item-meta">
+                          <span>{tc.steps.length}개 스텝</span>
+                          <span>{count}회 실행</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            {grouped.noFolder.map((tc) => {
               const last = getLastRun(tc.id);
               const count = getRunCount(tc.id);
               return (
@@ -199,6 +261,11 @@ export default function TestCaseList() {
             <div className="tm-detail-hd">
               <div>
                 <span className="tm-item-area">{detail.featureArea}</span>
+                {detail.folder && (
+                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                    <Folder size={12} /> {detail.folder}
+                  </div>
+                )}
                 <h3 style={{ margin: "6px 0 0", fontSize: 16, fontWeight: 600 }}>{detail.title}</h3>
               </div>
               <div style={{ display: "flex", gap: 6 }}>

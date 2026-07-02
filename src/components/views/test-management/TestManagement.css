@@ -104,6 +104,43 @@
   color: var(--muted);
 }
 
+/* Folders */
+.tm-folder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--bg);
+  border-bottom: 1px solid var(--line2);
+  cursor: pointer;
+  user-select: none;
+}
+.tm-folder:hover {
+  background: var(--line2);
+}
+.tm-folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tm-folder-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface);
+  padding: 0 6px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+.tm-item-nested {
+  padding-left: 32px;
+}
+
 /* Detail */
 .tm-detail-hd {
   display: flex;
