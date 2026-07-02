@@ -1,17 +1,111 @@
-import { useState, useMemo } from "react";
-import { Plus, Search, FlaskConical, ChevronRight, CheckCircle2, XCircle, MinusCircle } from "lucide-react";
+import { useState, useMemo, useRef } from "react";
+import { Plus, Search, FlaskConical, ChevronRight, CheckCircle2, XCircle, MinusCircle, Upload } from "lucide-react";
+import { read, utils } from "xlsx";
 import { useStore } from "../../../store/StoreContext";
 import TestCaseForm from "../../forms/TestCaseForm";
 import TestRunForm from "../../forms/TestRunForm";
 import "./TestManagement.css";
 
+function parseExcel(buffer) {
+  const wb = read(buffer, { type: "array" });
+  // 두 번째 시트 (TC 데이터), 없으면 첫 번째 시트
+  const sheetName = wb.SheetNames[1] || wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+  // 헤더 행 찾기: "1 Depth" 포함된 행
+  let headerIdx = rows.findIndex((r) =>
+    r.some((c) => String(c).trim() === "1 Depth")
+  );
+  if (headerIdx === -1) {
+    // 대안: Priority, Expected Result 포함 행
+    headerIdx = rows.findIndex((r) =>
+      r.some((c) => String(c).includes("Priority")) &&
+      r.some((c) => String(c).includes("Expected"))
+    );
+  }
+  if (headerIdx === -1) return [];
+
+  const header = rows[headerIdx].map((c) => String(c).trim());
+
+  // 컬럼 인덱스 매핑
+  const depthCols = [];
+  for (let i = 0; i < header.length; i++) {
+    if (/^\d+ Depth$/.test(header[i])) depthCols.push(i);
+  }
+  const priIdx = header.findIndex((h) => h === "Priority");
+  const expIdx = header.findIndex((h) => h.includes("Expected"));
+
+  if (depthCols.length === 0 || expIdx === -1) return [];
+
+  const testCases = [];
+  let currentGroup = "";
+
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.every((c) => !String(c).trim())) continue;
+
+    // 첫 번째 depth 컬럼에 값이 있으면 그룹(기능영역) 업데이트
+    const d1 = String(row[depthCols[0]] || "").trim();
+    if (d1) currentGroup = d1;
+
+    // Expected Result가 있으면 테스트 케이스로 취급
+    const expected = String(row[expIdx] || "").trim();
+    if (!expected) continue;
+
+    // depth 값들을 조합해서 제목 생성
+    const depths = depthCols.map((ci) => String(row[ci] || "").trim()).filter(Boolean);
+    const title = depths.length > 1 ? depths.slice(1).join(" > ") : depths[0] || "";
+    if (!title) continue;
+
+    const priority = priIdx >= 0 ? String(row[priIdx] || "").trim() : "";
+
+    testCases.push({
+      title,
+      featureArea: currentGroup,
+      preconditions: "",
+      steps: [{ order: 1, action: title, expected }],
+      tags: priority ? [priority] : [],
+      linkedItemIds: [],
+    });
+  }
+
+  return testCases;
+}
+
 export default function TestCaseList() {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const [editing, setEditing] = useState(null);
   const [runTarget, setRunTarget] = useState(null);
   const [selected, setSelected] = useState(null);
   const [q, setQ] = useState("");
   const [fArea, setFArea] = useState("all");
+  const fileRef = useRef(null);
+
+  const handleImport = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const cases = parseExcel(reader.result);
+      if (cases.length === 0) {
+        alert("테스트 케이스를 찾을 수 없습니다. 엑셀 형식을 확인해주세요.");
+        return;
+      }
+      // 새 기능영역 자동 추가
+      const existingAreas = new Set(state.featureAreas);
+      const newAreas = [...new Set(cases.map((c) => c.featureArea).filter((a) => a && !existingAreas.has(a)))];
+      if (newAreas.length > 0) {
+        dispatch({ type: "SET_FEATURE_AREAS", areas: [...state.featureAreas, ...newAreas] });
+      }
+      cases.forEach((tc) => {
+        dispatch({ type: "UPSERT_TEST_CASE", testCase: tc });
+      });
+      alert(`${cases.length}개의 테스트 케이스를 가져왔습니다.`);
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  };
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -47,7 +141,13 @@ export default function TestCaseList() {
       <div className="tm-list">
         <div className="tm-list-hd">
           <h2 className="tm-title"><FlaskConical size={18} /> 테스트 케이스</h2>
-          <button className="btn-primary" onClick={() => setEditing("new")}><Plus size={14} /> 추가</button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn-clear" onClick={() => fileRef.current?.click()}>
+              <Upload size={14} /> 엑셀 가져오기
+            </button>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={handleImport} style={{ display: "none" }} />
+            <button className="btn-primary" onClick={() => setEditing("new")}><Plus size={14} /> 추가</button>
+          </div>
         </div>
 
         <div className="tm-filters">
