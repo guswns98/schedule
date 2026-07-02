@@ -74,6 +74,7 @@ function parseExcel(buffer) {
     const title = activeParts[activeParts.length - 1];
     const folderParts = activeParts.length > 1 ? activeParts.slice(0, -1) : [];
     if (rootName) folderParts.unshift(rootName);
+    if (folderParts.length > 2) folderParts.length = 2;
     const folder = folderParts.join(" / ");
     const featureArea = currentDepths[0] || "";
 
